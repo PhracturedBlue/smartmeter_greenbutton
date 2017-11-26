@@ -1,15 +1,21 @@
+"""Elapsed time functions"""
+
 import time
 import logging
 
-ts = time.time()
+# pylint: disable=C0103
+# pylint: disable=global-statement
 
-def elapsed(s):
-    global ts
+_timestamp = time.time()
+
+def elapsed(msg):
+    """Print elapsed time"""
+    global _timestamp
     new_ts = time.time()
-    logging.info("{} - Elapsed time: {}".format(s, new_ts - ts))
-    ts = new_ts
+    logging.info("%s - Elapsed time: %.3f", msg, float(new_ts - _timestamp))
+    _timestamp = new_ts
 
 def reset_elapsed():
-    global ts
-    ts = time.time()
-
+    """Reset elapsed time"""
+    global _timestamp
+    _timestamp = time.time()

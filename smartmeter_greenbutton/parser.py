@@ -1,17 +1,20 @@
-import xml.etree.ElementTree as ET
+"""Parse GreenButton XML (within zipfile)"""
+
 import datetime
 import io
 import re
 from zipfile import ZipFile
+import xml.etree.ElementTree as ET
 
 def parse_data(zipdata):
+    """Main parser routine"""
     usage = []
     zipfh = io.BytesIO(zipdata)
 
-    with ZipFile(zipfh) as fh:   
-        data = fh.read(fh.infolist()[0]).decode("utf-8")
+    with ZipFile(zipfh) as stream:
+        data = stream.read(stream.infolist()[0]).decode("utf-8")
         data = re.sub(' xmlns="[^"]+"', '', data)
-        root=ET.fromstring(data)
+        root = ET.fromstring(data)
         last_date = datetime.date.today()
         kwh = 0
         for child in root.findall("./entry"):
@@ -33,4 +36,3 @@ def parse_data(zipdata):
                     end = start.replace(hour=23, minute=59, second=59, microsecond=0)
                 usage.append((end, duration, value, kwh))
     return usage
-
