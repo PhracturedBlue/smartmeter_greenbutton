@@ -6,6 +6,7 @@ import logging
 import requests
 from selenium.common.exceptions import NoSuchElementException
 
+
 def wait_for(browser, elemtype, query, max_count=60):
     """Wait for requested element on dymanically loading pages"""
     count = 0
@@ -20,10 +21,12 @@ def wait_for(browser, elemtype, query, max_count=60):
                 break
             return found
         except NoSuchElementException:
-            logging.debug("Waiting for %s = %s (Count: %d)", elemtype, query, count)
+            logging.debug("Waiting for %s = %s (Count: %d)",
+                          elemtype, query, count)
             time.sleep(1)
             count += 1
     raise TimeoutError
+
 
 def download(browser, link):
     """Downlaod file into variable for requested link"""
@@ -32,6 +35,8 @@ def download(browser, link):
 
     for cookie in cookies:
         session.cookies.set(cookie['name'], cookie['value'])
-    logging.debug("Fetching: %s -> %s", browser.current_url, link.get_attribute("href"))
+    logging.debug("Fetching: %s -> %s",
+                  browser.current_url,
+                  link.get_attribute("href"))
     response = session.get(link.get_attribute("href"))
     return response

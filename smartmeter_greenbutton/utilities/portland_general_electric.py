@@ -10,6 +10,7 @@ from smartmeter_greenbutton.time import (reset_elapsed, elapsed)
 
 URL = "https://cs.portlandgeneral.com"
 
+
 def fetch_data(conf, start_date, retries=2):
     """Routine to scrape web-page"""
 
@@ -48,28 +49,30 @@ def fetch_data(conf, start_date, retries=2):
         browser.quit()
         raise excpt
 
+
 def _login(browser, conf):
-    #browser.implicitly_wait(10)
+    # browser.implicitly_wait(10)
     elem_submit = wait_for(browser, "id", "submitButton")
     elem_user = browser.find_element_by_id("userName")
     elem_password = browser.find_element_by_id("password")
-    #elem_remember = browser.find_element_by_id("rememberMeCheckBox")
+    # elem_remember = browser.find_element_by_id("rememberMeCheckBox")
     elem_user.clear()
     elem_user.send_keys(conf['username'])
     elem_password.clear()
     elem_password.send_keys(conf['password'])
     elapsed("Loaded Login page")
     elem_submit.click()
-    #try:
-    #    while True:
-    #        waiting = browser.find_element_by_xpath("//div[@cg-busy]")
-    #        logging.debug("{} : {}".format(count, waiting))
-    #        count += 1
-    #except:
-    #    pass
+    # try:
+    #     while True:
+    #         waiting = browser.find_element_by_xpath("//div[@cg-busy]")
+    #         logging.debug("{} : {}".format(count, waiting))
+    #         count += 1
+    # except:
+    #     pass
     found = wait_for(browser, "id", "dailyUsageLink")
     elapsed("Loaded Account page")
     return found
+
 
 def _load_greenbutton_page(browser):
     browser.switch_to_window(browser.window_handles[1])
@@ -82,12 +85,14 @@ def _load_greenbutton_page(browser):
     elapsed("Loaded Green Button page")
     return link
 
+
 def _set_date_range(browser, start_date):
     # 09/23/2017
     elem_start_date = browser.find_element_by_id("calStartDate")
     if start_date:
-        browser.execute_script("arguments[0].removeAttribute('readonly','readonly')",
-                               elem_start_date)
+        browser.execute_script(
+            "arguments[0].removeAttribute('readonly','readonly')",
+            elem_start_date)
         logging.debug("Set date to" + start_date.strftime("%m/%d/%Y"))
         elem_start_date.clear()
         elem_start_date.send_keys(start_date.strftime("%m/%d/%Y"))
@@ -95,6 +100,7 @@ def _set_date_range(browser, start_date):
     logging.info("Fetching data from %s to %s",
                  elem_start_date.get_attribute("value"),
                  elem_end_date.get_attribute("value"))
+
 
 def _download(browser, link):
     count = 0
