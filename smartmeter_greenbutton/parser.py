@@ -33,7 +33,7 @@ def parse_data(zipdata):
                     last_date = start.date()
                     kwh = 0
                     usage.append((start, 0.0, 0.0, 0.0))
-                kwh += value / duration * 3600
+                kwh += value / duration * 3600 / 1000
                 end = start + datetime.timedelta(seconds=duration)
                 if end.date() != start.date():
                     end = start.replace(hour=23, minute=59,
