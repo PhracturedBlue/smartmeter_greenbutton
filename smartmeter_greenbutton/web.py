@@ -30,6 +30,8 @@ def wait_for(browser, elemtype, query, max_count=60):
 
 def download(browser, link):
     """Downlaod file into variable for requested link"""
+    if not isinstance(link, str):
+        link = link.get_attribute("href")
     session = requests.Session()
     cookies = browser.get_cookies()
 
@@ -37,6 +39,6 @@ def download(browser, link):
         session.cookies.set(cookie['name'], cookie['value'])
     logging.debug("Fetching: %s -> %s",
                   browser.current_url,
-                  link.get_attribute("href"))
-    response = session.get(link.get_attribute("href"))
+                  link)
+    response = session.get(link)
     return response

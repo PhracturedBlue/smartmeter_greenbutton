@@ -31,6 +31,8 @@ def main():
     else:
         with open(args.file, "rb") as stream:
             zipdata = stream.read()
+    # with open("dump", "wb") as stream:
+    #     stream.write(zipdata)
     usage = parse_data(zipdata)
     for (start, duration, value, kwh) in usage:
         print("{} ({}): {} --> {}".format(

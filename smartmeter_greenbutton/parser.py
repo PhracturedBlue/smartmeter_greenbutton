@@ -21,7 +21,8 @@ def parse_data(zipdata):
         last_date = datetime.date.today()
         kwh = 0
         for child in root.findall("./entry"):
-            if child.find("./title").text != "Energy Usage":
+            title = child.find("./title")
+            if title and title.text != "Energy Usage":
                 print("Skipping: {}".format(child.find("./title").text))
                 continue
             for reading in child.findall(INTERVAL):
