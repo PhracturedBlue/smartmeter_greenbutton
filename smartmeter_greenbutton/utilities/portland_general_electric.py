@@ -1,140 +1,101 @@
-"""Fetch greenbutton data from Portland General Electric's web-page"""
+"""Fetch greenbutton data from Portland General Electric"""
+# This module uses OAuth2 for access
+# You must provide 2 arguments:
+# 1) A refresh token
+# 2) A client ID
+# To generate these:
+#   From a chrome browser, open up portlandgeneral.com
+#   right click and open up 'inspect'
+#   select the 'Network' tab
+#   enter your username/password and wait for login to complete
+#   in the network tab, filter for 'signIn' and locate the 'POST' request
+#   This should looks somehing like:
+#       https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=xxxxxxxxxxxxxxx
+#   Select the 'Response' tab, and copy the 'refreshToken' string (1)
+#   in the network tab filter for 'refresh' and locate the 'POST' request
+#   This should look like:
+#       https://api.portlandgeneral.com/pg-token-implicit/refresh?client_id=xxxxxxxxxxxxxx&response_type=token&redirect_uri=
+#   Select the 'Response' tab, and copy the 'client_id' string (2)
+#   Copy config.yaml.template to config.yaml
+#   Edit the config.yaml file, and update the 'refresh_token' value with (1) and the 'client_id' valie with (2)
 
-import time
+"https://pgn.opower.com/ei/edge/apis/multi-account-v1/cws/pgn/customers/current"
+import datetime
 import logging
-from urllib.parse import urlparse
-from selenium import webdriver
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.common.exceptions import (ElementNotVisibleException,
-                                        WebDriverException)
-from smartmeter_greenbutton.web import (wait_for, download)
-from smartmeter_greenbutton.time import (reset_elapsed, elapsed)
+import requests
+from requests.exceptions import RequestException
 
 URL = "https://cs.portlandgeneral.com"
+REFRESH_URL = "https://api.portlandgeneral.com/pg-token-implicit/refresh?client_id={client_id}&response_type=token&redirect_uri="
+ACCOUNT_URL = "https://pgn.opower.com/ei/edge/apis/multi-account-v1/cws/pgn/customers/current"
+DATERANGE_URL = "https://pgn.opower.com/ei/edge/apis/DataBrowser-v1/cws/utilities/pgn/customers/{uuid}/usage_export"
+#GREENBUTTON_URL = "https://pgn.opower.com/ei/edge/apis/DataBrowser-v1/cws/utilities/pgn/customers/{uuid}/usage_export/download?format=xml&startDate={start_date}&endDate={end_date}"
+GREENBUTTON_URL = "https://pgn.opower.com/ei/edge/apis/DataBrowser-v1/cws/utilities/pgn/customers/{uuid}/usage_export/download?format=xml"
 
+def fetch_data(conf, start_date):
+    bearer_token = _get_bearer_token(conf)
+    uuid = _get_account_uuid(bearer_token)
+    _start_date, end_date = _get_date_range(bearer_token, uuid)
+    start_date = max(_start_date, start_date or datetime.datetime.min)
+    data = _get_greenbutton_data(start_date, end_date, bearer_token, uuid)
+    return data
 
-def fetch_data(conf, start_date, retries=2):
-    """Routine to scrape web-page"""
-
-    retries -= 1
-    reset_elapsed()
-    # here we'll use pseudo browser PhantomJS,
-    # but browser can be replaced with browser = webdriver.FireFox(),
-    # which is good for debugging.
-    browser = webdriver.Firefox()
-    #browser = webdriver.PhantomJS()
-    elapsed("Startup browser")
+def _get_bearer_token(conf):
+    """Get updated bearer token via OAuth2"""
+    url = REFRESH_URL.format(client_id=conf['client_id'])
+    headers = {
+        'Content-Length': '0',
+        'idp_refresh_token': conf['refresh_token'],
+    }
     try:
-        browser.get(URL)
-        found = _login(browser, conf)
-        found.click()
+        resp = requests.post(url, headers=headers)
+        data = resp.json()
+        access_token = data['access_token']
+        return access_token
+    except RequestException as _e:
+        logging.error("Failed to get access_token: Error: %s", _e)
+        raise
 
-        link = _load_greenbutton_page(browser)
-        link = _build_download_link(browser, start_date)
-        #_set_date_range(browser, start_date)
-        response = download(browser, link)
+def _get_account_uuid(access_token):
+    url = ACCOUNT_URL
+    headers = { 'Authorization': f'Bearer {access_token}' }
+    try:
+        resp = requests.get(url, headers=headers)
+        data = resp.json()
+        uuid = data['uuid']
+        return uuid
+    except RequestException as _e:
+        logging.error("Failed to get UUID: Error: %s", _e)
+        raise
 
-        browser.quit()
-        return response.content
+def _get_date_range(access_token, uuid):
+    url = DATERANGE_URL.format(uuid=uuid)
+    headers = { 'Authorization': f'Bearer {access_token}' }
+    start_time = datetime.datetime.now()
+    end_time = datetime.datetime.min
+    try:
+        resp = requests.get(url, headers=headers)
+        data = resp.json()
+        for obj in data['bills']:
+            _start = datetime.datetime.fromisoformat(obj['startDate'][:-1])
+            _end = datetime.datetime.fromisoformat(obj['endDate'][:-1])
+            start_time = min(start_time, _start)
+            end_time = max(end_time, _end)
+        return start_time, end_time
+    except RequestException as _e:
+        logging.error("Failed to determine allowed date ranges: Error: %s", _e)
+        raise
 
-    except WebDriverException as excpt:
-        logging.error("Failed to fetch data: Error: %s", str(excpt))
-        with open("debug.log", "w") as stream:
-            stream.write("{}".format(browser.page_source))
-        browser.save_screenshot("debug.png")
-        if retries:
-            logging.warning("Retrying fetch in 10 minutes")
-            time.sleep(600)
-            return fetch_data(conf, start_date, retries)
-        browser.quit()
-        raise excpt
-
-
-def _login(browser, conf):
-    elem_submit = wait_for(browser, "id", "submitButton")
-    elem_user = browser.find_element_by_id("userNameInput")
-    elem_password = browser.find_element_by_id("passwordInput")
-    # elem_remember = browser.find_element_by_id("rememberMeCheckBox")
-    elem_user.clear()
-    elem_user.send_keys(conf['username'])
-    elem_password.clear()
-    elem_password.send_keys(conf['password'])
-    elapsed("Loaded Login page")
-    elem_submit.click()
-    found = WebDriverWait(browser, 60).until(
-        EC.element_to_be_clickable((By.ID, 'myUsageLink')))
-    overlay = browser.find_elements_by_class_name("ng-busy-backdrop")
-    for over in overlay:
-        browser.execute_script("arguments[0].style.visibility='hidden'", over)
-    WebDriverWait(browser, 60).until(
-        EC.invisibility_of_element_located((By.CLASS_NAME, 'ng-busy-backdrop')))
-    # found = wait_for(browser, "id", "myUsageLink")
-    elapsed("Loaded Account page")
-    return found
-
-
-def _load_greenbutton_page(browser):
-    for _i in range(5):
-        if len(browser.window_handles) >= 2:
-            break
-        time.sleep(1)
-    browser.switch_to_window(browser.window_handles[1])
-    link = wait_for(browser, "class", "green-button")
-    elapsed("Loaded Usage page")
-    link.click()
-    #link.find_element_by_tag_name("img").click()
-
-    #browser.switch_to_window(browser.window_handles[2])
-    # link = browser.find_element_by_xpath("//input[@type='submit' and @value='Export']")
-    link = wait_for(browser, "class", "primary")
-    elapsed("Loaded Green Button page")
-    return link
-
-
-def _set_date_range(browser, start_date):
-    # 09/23/2017
-    elem_range_radio = browser.find_element_by_id("period-date")
-    elem_range = elem_range_radio.find_element_by_xpath("..").find_element_by_tag_name("label")
-    elem_range.click()
-    elem_xml_radio = browser.find_element_by_id("format-xml")
-    elem_xml = elem_xml_radio.find_element_by_xpath("..").find_element_by_tag_name("label")
-    elem_xml.click()
-    elem_start_date = browser.find_element_by_id("date-picker-from")
-    if start_date:
-        #browser.execute_script(
-        #    "arguments[0].removeAttribute('readonly','readonly')",
-        #    elem_start_date)
-        logging.debug("Set date to" + start_date.strftime("%m/%d/%Y"))
-        elem_start_date.clear()
-        elem_start_date.send_keys(start_date.strftime("%m/%d/%Y"))
-    elem_end_date = browser.find_element_by_id("date-picker-to")
-    logging.info("Fetching data from %s to %s",
-                 elem_start_date.get_attribute("value"),
-                 elem_end_date.get_attribute("value"))
-
-
-def _build_download_link(browser, start_date):
-    """Build download link"""
-    # link = "https://pgn.opower.com/ei/app/api/usage_export/download?format=xml&startDate=2018-09-08&endDate=2018-10-08"
-    #import pdb; pdb.set_trace()
-    url = urlparse(browser.current_url)
-    if start_date:
-        start_date = start_date.strftime("%Y-%m-%d")
-    else:
-        elem_start_date = browser.find_element_by_id("date-picker-from")
-        start_date = _convert_date(elem_start_date.get_attribute("value"))
-    elem_end_date = browser.find_element_by_id("date-picker-to")
-    end_date = _convert_date(elem_end_date.get_attribute("value"))
-    link = "{}://{}/ei/app/api/usage_export/download?format=xml&startDate={}&endDate={}".format(
-        url.scheme, url.netloc,
-        start_date, end_date)
-    logging.info("Downloading from: %s", link)
-    return link
-
-
-def _convert_date(date):
-    """Convert form date into HREF date"""
-    month, day, year = date.split('/')
-    return year + "-" + month + "-" + day
+def _get_greenbutton_data(start_date, end_date, access_token, uuid):
+    url = GREENBUTTON_URL.format(
+        uuid=uuid,
+        start_date=start_date.strftime('%Y-%m-%d'),
+        end_date=end_date.strftime('%Y-%m-%d'))
+    headers = { 'Authorization': f'Bearer {access_token}' }
+    try:
+        resp = requests.get(url, headers=headers)
+        data = resp.content
+        return data
+    except RequestException as _e:
+        logging.error("Failed to download greenbutton data: Error: %s", _e)
+        raise

@@ -2,13 +2,18 @@
 
 import argparse
 import logging
+import yaml
 from smartmeter_greenbutton.parser import parse_data
 
 
-def fetch_data(module, conf, start_date=None):
+def fetch_data(conf, start_date=None):
     """Dynamically load requested utility module"""
-    mod = __import__('smartmeter_greenbutton.utilities.' +
-                     module, fromlist=['fetch_data'])
+    if start_date:
+        start_date = datetime.datetime.strprime(start_date, '%Y-%m-%d')
+    if 'module' not in conf:
+        logging.error("'module' is a required field in the config file")
+        raise ValueError
+    mod = __import__(f'smartmeter_greenbutton.utilities.{conf["module"]}', fromlist=['fetch_data'])
     mod_fetch_data = getattr(mod, 'fetch_data')
     zipdata = mod_fetch_data(conf, start_date)
     return zipdata
@@ -17,17 +22,22 @@ def fetch_data(module, conf, start_date=None):
 def main():
     """Main routine example"""
     parser = argparse.ArgumentParser()
-    parser.add_argument("--username", help="User Name", required=False)
-    parser.add_argument("--password", help="Password", required=False)
+    parser.add_argument("--config-file", help="Config File", required=True)
+    parser.add_argument("--start-date", help="Start-date as YYYY-MM-DD)")
     parser.add_argument("--file",
                         help="Zip File to read rather than reading from web",
                         required=False)
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO)
     if not args.file:
-        zipdata = fetch_data(
-            "portland_general_electric",
-            {'username': args.username, 'password': args.password})
+        with open(args.config_file) as _fh:
+            try:
+                conf = yaml.safe_load(_fh)
+            except yaml.YAMLError as _e:
+                logging.error("Failed to parse config file: %s", _e)
+                raise
+        breakpoint()
+        zipdata = fetch_data(conf, args.start_date)
     else:
         with open(args.file, "rb") as stream:
             zipdata = stream.read()

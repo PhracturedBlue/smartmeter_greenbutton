@@ -1,3 +1,4 @@
 *.pyc
 *.swp
 ghostdriver.log
+config.yaml
